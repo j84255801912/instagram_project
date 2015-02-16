@@ -1,0 +1,305 @@
+import MySQLdb
+import ConfigParser
+import os
+import string
+import pycurl
+from StringIO import StringIO
+
+from db_config import config
+
+class insta_db():
+    def db_connect(self):
+        if config['type'] == 'MySQL':
+            try:
+                db = MySQLdb.connect(host=config['host'],
+                                     user=config['user'],
+                                     passwd=config['password'],
+                                     db=config['db'],
+                                     use_unicode=True,
+                                     charset="utf8")
+                return db
+            except:
+                return None
+    def create_table_location_address(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE IF NOT EXISTS location_address (
+                 location_id    INT,
+                 city           VARCHAR(100),
+                 district       VARCHAR(100)
+                )
+              '''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_location_address\n"
+    def create_table_loc_img(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE IF NOT EXISTS loc_img (
+                seq_id              INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                image_url           VARCHAR(500),
+                image_instagram_url VARCHAR(500),
+                location_id         INT,
+                with_face           TINYINT(1)
+                )'''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_loc_img\n"
+
+    def create_table_location(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE IF NOT EXISTS location (
+                seq_id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                location_id     INT,
+                location_name   VARCHAR(100),
+                lat             DOUBLE,
+                lon             DOUBLE,
+                number_of_img   INT
+                )'''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_location\n"
+
+    def create_table_broken_image(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE IF NOT EXISTS broken_image (
+                seq_id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                image_seq_id    INT
+                )'''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_broken_image"
+
+    def create_table_location_image(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE IF NOT EXISTS location_image (
+                location_id     INT,
+                image_url           VARCHAR(500),
+                image_instagram_url VARCHAR(500)
+                )'''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_location_image\n"
+
+    def create_table_image(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE IF NOT EXISTS image (
+                seq_id              INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                location_id         INT,
+                image_url           VARCHAR(500),
+                image_instagram_url VARCHAR(500),
+                ranking             INT,
+                with_face           TINYINT(1)
+                )'''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_image\n"
+
+    def create_table_new_location(self, db):
+        cur = db.cursor()
+        sql = '''CREATE TABLE new_location AS (SELECT location.*, loc_img.image_url, loc_img.image_instagram_url, loc_img.with_face FROM location     INNER JOIN loc_img     ON location.location_id=loc_img.location_id);
+              '''
+        try:
+            cur.execute(sql)
+        except:
+            print "ERROR in create_table_new_location\n"
+
+    def insert_new_location(self, db):
+        dir_path = '/home/ubuntu/python-work/i_data'
+        cur = db.cursor()
+        for dirname in os.listdir(dir_path): #e.g. /home/kevin
+            for filename in os.listdir(dir_path+'/'+dirname):
+                fp = open(dir_path+'/'+dirname+'/'+filename)
+                while 1:
+                    line = fp.readline()
+                    line = line.replace('\n', '')
+                    if line == "":
+                        break
+                    exploded = line.split(',')
+                    try:
+                        cur.execute("""INSERT INTO location (location_id, latitude, longtitude) VALUES (%s, %s, %s)""", (int(exploded[0]), float(exploded[1]), float(exploded[2])))
+                        db.commit()
+                    except:
+                        db.rollback() #rollback in case of errors
+                        print "ERROR when insert_new_location into db\n"
+                fp.close()
+    def update_location(self, db):
+        dir_path = './location.csv'
+        cur = db.cursor()
+        for line in open(dir_path):
+            line = line.replace('\n', '')
+            if line == "":
+                break
+            exploded = string.split(line, ',')
+            if exploded[0] == "location_id":
+                continue
+            try:
+                cur.execute("""UPDATE location SET location_name=%s WHERE location_id=%s""", (exploded[1].decode('utf-8'), int(exploded[0])))
+                print exploded[1].decode('utf-8')
+                db.commit()
+            except:
+                db.rollback()
+                print "ERROR IN UPDATING"
+    def insert_location(self, db):
+        dir_path = './location.csv'
+        cur = db.cursor()
+        fp = open(dir_path)
+
+        while 1:
+            line = fp.readline()
+            line = line.replace('\n', '')
+            line = line.replace('\"', '')
+            if line == "":
+                break
+            exploded = string.split(line, ',')
+            if exploded[0] == "location_id":
+                continue
+            cur.execute("""SELECT COUNT(*) FROM location WHERE location_id=%s""", (exploded[0],))
+            # if this location_id is inserted before, skip it.
+            if cur.fetchone()[0] == 1:
+                print "skip location_id = " + exploded[0]
+                continue
+            try:
+                cur.execute("""INSERT INTO location (location_id, location_name, lat, lon, number_of_img) VALUES (%s, %s, %s, %s, %s)""", (int(exploded[0]), exploded[1], float(exploded[2]), float(exploded[3]), int(exploded[4])))
+                db.commit()
+                print "insert location_id = " + exploded[0] + " , name = " + exploded[1]
+            except:
+                db.rollback()
+                print "ERROR when insert_location\n"
+        fp.close()
+    def insert_image(self, db, dir_path):
+        cur = db.cursor()
+        fp = open(dir_path)
+        count = 1
+        while 1:
+            line = fp.readline()
+            line = line.replace('\n', '')
+            if line == "":
+                break
+            exploded = string.split(line, ',')
+            if exploded[0][0] == 'l':
+                continue
+            try:
+                # location_id,image_url,image_instagram_url,ranking,with_face
+                cur.execute("""INSERT INTO image (location_id, image_url, image_instagram_url, ranking, with_face) VALUES (%s, %s, %s, %s, %s)""", (int(exploded[0]), exploded[1], exploded[2], int(exploded[3]), 1 if exploded[4] == "True" else 0))
+                print "insert %dth photo, %s\n" % (count, exploded[2])
+                db.commit()
+            except:
+                db.rollback()
+                print "ERROR when insert_image\n"
+            count += 1
+        fp.close()
+    def insert_loc_img(self, db):
+        cur = db.cursor()
+        dir_path = '/home/ubuntu/python-work/finalresult'
+        for filename in os.listdir(dir_path):
+            location_id = string.split(filename.split('_')[1], '.')[0]
+            fp = open(dir_path+'/'+filename)
+            while 1:
+                line = fp.readline()
+                line = line.replace('\n', '')
+                if line == "":
+                    break
+                exploded = line.split(',')
+                try:
+                    cur.execute("""INSERT INTO loc_img (img_url, instagram_url, location_id) VALUES (%s, %s, %s)""", (exploded[1], exploded[0], int(location_id)))
+                    db.commit()
+                except:
+                    db.rollback()
+                    print "ERROR when insert_loc_img\n"
+            fp.close()
+    def insert_loc_img_1(self, db):
+        cur = db.cursor()
+        dir_path = '/home/ubuntu/python-work/csv_result'
+        for filename in os.listdir(dir_path):
+            location_id = filename
+            fp = open(dir_path+'/'+filename)
+            while 1:
+                line = fp.readline()
+                line = line.replace('\n', '')
+                if line == "":
+                    break
+                exploded = line.split(',')
+                if exploded[4] == 'standard_resolution':
+                    continue;
+                try:
+                    cur.execute("""INSERT INTO loc_img (img_url, instagram_url, location_id) VALUES (%s, %s, %s)""", (exploded[4], exploded[5], int(location_id)))
+                    db.commit()
+                except:
+                    db.rollback()
+                    print "ERROR when insert_loc_img_1\n"
+            fp.close()
+    def try_cache_image(self, db):
+        cur = db.cursor()
+        try:
+            cur.execute("""SELECT seq_id, image_url FROM image WHERE available=-1""")
+        except:
+            print "ERROR when SELECT OUT IMAGES"
+        fetchdata = cur.fetchall()
+        buffer = StringIO()
+        curl = pycurl.Curl()
+        for row in fetchdata:
+            curl.setopt(curl.URL, row[1])
+            curl.setopt(curl.WRITEDATA, buffer)
+            curl.perform()
+            status = curl.getinfo(pycurl.HTTP_CODE)
+            print "image_id = %s, status = %d" % (row[0], status)
+
+            try:
+                cur.execute("""UPDATE image SET available=%s WHERE seq_id=%s""", (1 if status is 200 else 0, row[0]))
+                db.commit()
+            except:
+                db.rollback()
+                print "ERROR when UPDATE image"
+
+        curl.close()
+    def test_broken_image(self, db):
+        cur = db.cursor()
+        try:
+            cur.execute("""SELECT set_broken_image.image_id, image.image_url FROM set_broken_image LEFT JOIN image ON set_broken_image.image_id=image.seq_id WHERE operation=0""")
+        except Exception, e:
+            print e
+        fetchdata = cur.fetchall()
+        buffer = StringIO()
+        curl = pycurl.Curl()
+        for row in fetchdata:
+            curl.setopt(curl.URL, row[1])
+            curl.setopt(curl.WRITEDATA, buffer)
+            curl.perform()
+            status = curl.getinfo(pycurl.HTTP_CODE)
+            if status is 200:
+                print "========================================="
+                print "image %d : %s is incorrectly set broken" % (row[0], row[1],)
+                try:
+                    cur.execute("""UPDATE image SET available=%s WHERE seq_id=%s""", (1, row[0],))
+                    db.commit()
+                    print "Recover it to AVAILABLE"
+                except Exception, e:
+                    print "In UPDATE image table, Caught : " + e
+                try:
+                    cur.execute("""INSERT INTO set_broken_image (image_id, operation) VALUES (%s, %s)""", (row[0], 1,))
+                    db.commit()
+                    print "INSERT the RECOVERY operation into set_broken_image table"
+                except Exception, e:
+                    print "In INSERT set_broken_image table, Caught : " + e
+                print "========================================="
+            else:
+                print "image %d is broken, status code = %d" % (row[0], status,)
+if __name__ == '__main__':
+    print "init insta_db\n"
+    db = db_connect()
+    if db != None:
+        print "DB connection success!\n"
+        create_table_location(db)
+        create_table_loc_img(db)
+#        create_table_image_info(db)
+        insert_location(db)
+#        insert_new_location(db)
+        insert_loc_img(db)
+        db.close()
+    else:
+        print "db_connect() failed\n"
