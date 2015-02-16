@@ -2,5 +2,5 @@
 
 while true
 do
-    python curl_image.py
+    python dbmanager.py -m curl 2>>curling_error.log
 done

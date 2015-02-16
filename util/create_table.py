@@ -3,7 +3,7 @@ import time
 import sys
 import csv
 
-version = "_v2"
+version = ""
 
 def create_table_location(db):
     cur = db.cursor()
@@ -31,6 +31,9 @@ def create_table_location(db):
         print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
         sys.exit(1)
 
+'''
+    this is the old version.
+'''
 def create_table_location_image_cache(db):
     cur = db.cursor()
     # check if the location_image_cache table exists.
@@ -51,22 +54,22 @@ def create_table_location_image_cache(db):
     sql =   """
                 CREATE TABLE IF NOT EXISTS %s AS
                 (
-                    SELECT location.*, p.urls, p.image_ids FROM location LEFT JOIN
+                    SELECT l.*, p.urls FROM location l LEFT JOIN
                     (
-                        SELECT k.location_id, GROUP_CONCAT(image_url) as urls, GROUP_CONCAT(seq_id) as image_ids FROM
+                        SELECT k.location_id, GROUP_CONCAT(image_url_small) as urls FROM
                         (
                             SELECT t.*, @num := if(@location_id = location_id, @num + 1, 1) AS row_number, @location_id := location_id AS dummy FROM
                             (
-                                SELECT * FROM image WHERE available!=0 ORDER BY location_id ASC, ranking, with_face
+                                SELECT * FROM image WHERE available!=0 ORDER BY location_id ASC, with_face ASC, ranking ASC
                             ) t
-                            GROUP BY location_id, row_number HAVING row_number <= 3
+                            GROUP BY location_id, row_number HAVING row_number <= 5
                         ) k JOIN
                         (
                             SELECT @num:=0, @location_id=NULL
                         ) q
                         GROUP BY location_id
                     ) p
-                    ON location.location_id=p.location_id
+                    ON l.location_id=p.location_id
                 )
             """ % (table_name,)
     try:
@@ -85,16 +88,89 @@ def create_table_location_image_cache(db):
             print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
             sys.exit(1)
         print "Swapped the old one and the new one"
+
+'''
+this is the complicated version.
+def create_table_location_image_cache(db):
+    cur = db.cursor()
+    # check if the location_image_cache table exists.
+    # if not, we should build one.
+    # else, create a new one. Back up the old one and use the new one.
+    sql = "SHOW TABLES"
+    try:
+        cur.execute(sql)
+    except Exception, e:
+        print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
+        sys.exit(1)
+    table_names = [i[0].encode('utf-8') for i in cur.fetchall()]
+    if "location_image_cache" not in table_names:
+        table_name = "location_image_cache"
+    else:
+        table_name = "location_image_cache_" + time.strftime("%Y%m%d%H%M", time.localtime())
+
+    sql =   """
+                CREATE TABLE IF NOT EXISTS %s AS
+                (
+                    SELECT l.*, p.urls FROM location l LEFT JOIN
+                    (
+                        SELECT k.location_id, GROUP_CONCAT(image_url_small) as urls FROM
+                        (
+                            SELECT t.*, @num := if(@location_id = location_id, @num + 1, 1) AS row_number, @location_id := location_id AS dummy FROM
+                            (
+                                (
+                                    SELECT i.*, w.with_face FROM image_without_face AS i JOIN
+                                    (
+                                        SELECT @temp:=0 AS with_face
+                                    ) w
+                                )
+                                UNION ALL
+                                (
+                                    SELECT j.*, w.with_face FROM image_with_face AS j JOIN
+                                    (
+                                        SELECT @temp:=1 AS with_face
+                                    ) w
+                                )
+                                ORDER BY location_id ASC, with_face ASC, ranking ASC
+                            ) t
+                            GROUP BY location_id, row_number HAVING row_number <= 3
+                        ) k JOIN
+                        (
+                            SELECT @num:=0, @location_id=NULL
+                        ) q
+                        GROUP BY location_id
+                    ) p
+                    ON l.location_id=p.location_id
+                )
+            """ % (table_name,)
+    try:
+        cur.execute(sql)
+    except Exception, e:
+        print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
+        sys.exit(1)
+    print "Created table %s" % (table_name,)
+
+    if table_name != "location_image_cache":
+        # rename the old table to table_with_time and rename the new table to location_image_cache
+        sql =   "RENAME TABLE location_image_cache TO tmp_table, %s TO location_image_cache, tmp_table TO %s" % (table_name, table_name)
+        try:
+            cur.execute(sql)
+        except Exception, e:
+            print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
+            sys.exit(1)
+        print "Swapped the old one and the new one"
+'''
+
 def create_table_set_broken_image(db):
     cur = db.cursor()
     table_name = "set_broken_image" + version
     sql = '''
              CREATE TABLE IF NOT EXISTS %s (
                 id              INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                image_url       VARCHAR(500),
-                operation       INT
+                image_url       VARCHAR(200),
+                operation       INT,
              )
           ''' % (table_name,)
+#                CONSTRAINT uc_ImageOp UNIQUE (image_url,operation)
     try:
         cur.execute(sql)
         print "Created table %s" % (table_name,)
@@ -110,11 +186,35 @@ def create_table_image_with_face(db):
                 id                  INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 location_id         INT,
                 description         VARCHAR(200),
-                image_url           VARCHAR(500),
-                image_url_small     VARCHAR(500),
-                image_instagram_url VARCHAR(500),
+                image_url           VARCHAR(200),
+                image_url_small     VARCHAR(200),
+                image_instagram_url VARCHAR(200),
                 ranking             INT,
-                avaiable            INT DEFAULT -1
+                available           INT DEFAULT -1,
+                UNIQUE  (image_url)
+            )
+            ''' % (table_name,)
+    try:
+        cur.execute(sql)
+        print "Created table %s" % (table_name,)
+    except Exception, e:
+        print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
+        sys.exit(1)
+
+def create_table_image(db):
+    cur = db.cursor()
+    table_name = "image_with_face" + version
+    sql =   '''
+            CREATE TABLE IF NOT EXISTS %s (
+                id                  INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                location_id         INT,
+                description         VARCHAR(200),
+                image_url           VARCHAR(200),
+                image_url_small     VARCHAR(200),
+                image_instagram_url VARCHAR(200),
+                ranking             INT,
+                available           INT DEFAULT -1,
+                UNIQUE  (image_url)
             )
             ''' % (table_name,)
     try:
@@ -132,11 +232,12 @@ def create_table_image_without_face(db):
                 id                  INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 location_id         INT,
                 description         VARCHAR(200),
-                image_url           VARCHAR(500),
-                image_url_small     VARCHAR(500),
-                image_instagram_url VARCHAR(500),
+                image_url           VARCHAR(200),
+                image_url_small     VARCHAR(200),
+                image_instagram_url VARCHAR(200),
                 ranking             INT,
-                avaiable            INT DEFAULT -1
+                available           INT DEFAULT -1,
+                UNIQUE  (image_url)
             )
             ''' % (table_name,)
     try:
@@ -153,9 +254,9 @@ def create_table_image_representative(db):
             CREATE TABLE IF NOT EXISTS %s (
                 id                  INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 location_id         INT,
-                image_url           VARCHAR(500),
-                image_url_small     VARCHAR(500),
-                avaiable            INT DEFAULT -1,
+                image_url           VARCHAR(200),
+                image_url_small     VARCHAR(200),
+                available           INT DEFAULT -1,
                 UNIQUE  (image_url)
             )
             ''' % (table_name,)

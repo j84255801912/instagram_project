@@ -6,32 +6,38 @@ import time
 import sys
 from StringIO import StringIO
 
+from usage import error
+
 def try_cache_image(db):
     cur = db.cursor()
     try:
-        cur.execute("""SELECT seq_id, image_url FROM image WHERE available=-1""")
+        cur.execute("""SELECT image_url FROM image WHERE available=-1""")
     except Exception, e:
         print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
         sys.exit(1)
     fetchdata = cur.fetchall()
     buffer = StringIO()
     curl = pycurl.Curl()
+    count = 0
     for row in fetchdata:
-        curl.setopt(curl.URL, row[1])
-        curl.setopt(curl.WRITEDATA, buffer)
-        curl.perform()
-        status = curl.getinfo(pycurl.HTTP_CODE)
-        print "image_id = %s, status = %d" % (row[0], status)
-
         try:
-            cur.execute("""UPDATE image SET available=%s WHERE seq_id=%s""", (1 if status is 200 else 0, row[0]))
+            curl.setopt(curl.URL, row[0])
+            curl.setopt(curl.WRITEDATA, buffer)
+            curl.perform()
+            status = curl.getinfo(pycurl.HTTP_CODE)
+            print "%d , status = %d , %s" % (count, status, row[0])
+        except Exception, e:
+            error("ERROR in", inspect.stack()[0][3], e)
+            continue
+        try:
+            cur.execute("""UPDATE image SET available=%s WHERE image_url=%s""", (1 if status is 200 else 0, row[0]))
             db.commit()
         except Exception, e:
             db.rollback()
-            print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
-            sys.exit(1)
-
+            error("ERROR in", inspect.stack()[0][3], e)
+        count += 1
     curl.close()
+
 def test_broken_image(db):
     cur = db.cursor()
     try:
