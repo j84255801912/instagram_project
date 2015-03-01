@@ -52,8 +52,11 @@ def create_table_location_image_cache(db):
         table_name = "location_image_cache_" + time.strftime("%Y%m%d%H%M", time.localtime())
 
     sql =   """
-                CREATE TABLE IF NOT EXISTS %s AS
-                (
+                CREATE TABLE IF NOT EXISTS %s (
+                    PRIMARY KEY id (id),
+                    UNIQUE (location_id),
+                    INDEX number_of_img (number_of_img)
+                )
                     SELECT l.*, p.urls FROM location l LEFT JOIN
                     (
                         SELECT k.location_id, GROUP_CONCAT(image_url_small) as urls FROM
@@ -70,7 +73,6 @@ def create_table_location_image_cache(db):
                         GROUP BY location_id
                     ) p
                     ON l.location_id=p.location_id
-                )
             """ % (table_name,)
     try:
         cur.execute(sql)
@@ -191,7 +193,8 @@ def create_table_image_with_face(db):
                 image_instagram_url VARCHAR(200),
                 ranking             INT,
                 available           INT DEFAULT -1,
-                UNIQUE  (image_url)
+                UNIQUE  (image_url),
+                INDEX location_id (location_id)
             )
             ''' % (table_name,)
     try:
@@ -214,7 +217,8 @@ def create_table_image(db):
                 image_instagram_url VARCHAR(200),
                 ranking             INT,
                 available           INT DEFAULT -1,
-                UNIQUE  (image_url)
+                UNIQUE  (image_url),
+                INDEX location_id (location_id)
             )
             ''' % (table_name,)
     try:
@@ -237,7 +241,8 @@ def create_table_image_without_face(db):
                 image_instagram_url VARCHAR(200),
                 ranking             INT,
                 available           INT DEFAULT -1,
-                UNIQUE  (image_url)
+                UNIQUE  (image_url),
+                INDEX location_id (location_id)
             )
             ''' % (table_name,)
     try:
@@ -257,7 +262,8 @@ def create_table_image_representative(db):
                 image_url           VARCHAR(200),
                 image_url_small     VARCHAR(200),
                 available           INT DEFAULT -1,
-                UNIQUE  (image_url)
+                UNIQUE  (image_url),
+                INDEX location_id (location_id)
             )
             ''' % (table_name,)
     try:
