@@ -35,6 +35,7 @@ def create_table_location(db):
     this is the old version.
 '''
 def create_table_location_image_cache(db):
+
     cur = db.cursor()
     # check if the location_image_cache table exists.
     # if not, we should build one.
@@ -45,7 +46,10 @@ def create_table_location_image_cache(db):
     except Exception, e:
         print "ERROR in %s : %s" % (inspect.stack()[0][3], str(e),)
         sys.exit(1)
+
     table_names = [i[0].encode('utf-8') for i in cur.fetchall()]
+    num_photo = 5
+
     if "location_image_cache" not in table_names:
         table_name = "location_image_cache"
     else:
@@ -65,7 +69,7 @@ def create_table_location_image_cache(db):
                             (
                                 SELECT * FROM image WHERE available!=0 ORDER BY location_id ASC, with_face ASC, ranking ASC
                             ) t
-                            GROUP BY location_id, row_number HAVING row_number <= 5
+                            GROUP BY location_id, row_number HAVING row_number <= %d
                         ) k JOIN
                         (
                             SELECT @num:=0, @location_id=NULL
@@ -73,7 +77,7 @@ def create_table_location_image_cache(db):
                         GROUP BY location_id
                     ) p
                     ON l.location_id=p.location_id
-            """ % (table_name,)
+            """ % (table_name, num_photo)
     try:
         cur.execute(sql)
     except Exception, e:
@@ -82,7 +86,8 @@ def create_table_location_image_cache(db):
     print "Created table %s" % (table_name,)
 
     if table_name != "location_image_cache":
-        # rename the old table to table_with_time and rename the new table to location_image_cache
+        # rename the old table to table_with_time and rename the new table to
+        # location_image_cache
         sql =   "RENAME TABLE location_image_cache TO tmp_table, %s TO location_image_cache, tmp_table TO %s" % (table_name, table_name)
         try:
             cur.execute(sql)

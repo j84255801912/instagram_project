@@ -42,6 +42,8 @@ if __name__ == '__main__':
                 insert_image_without_face(db, args.csvfile)
             elif args.tablename == "image_representative":
                 insert_image_representative(db, args.csvfile)
+            elif args.tablename == 'tags':
+                insert_tags(db, args.csvfile)
         elif args.mode == "curl":
             from util.misc import *
             try_cache_image(db)
